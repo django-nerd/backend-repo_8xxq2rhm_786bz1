@@ -1,7 +1,7 @@
 import os
 import hashlib
 from typing import Optional, Dict, Any
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from bson import ObjectId
@@ -43,6 +43,10 @@ class AuthPayload(BaseModel):
 class CharacterPayload(BaseModel):
     prompt: str
     settings: Dict[str, Any] = {}
+
+class PlanPayload(BaseModel):
+    user_id: str
+    plan: str
 
 
 @app.get("/")
@@ -115,6 +119,22 @@ async def list_characters(user_id: str, limit: int = 20):
         raise HTTPException(status_code=500, detail="Database not available")
     docs = get_documents("character", {"user_id": user_id}, limit)
     return [to_str_id(d) for d in docs]
+
+
+@app.post("/api/user/plan")
+async def update_plan(payload: PlanPayload):
+    if db is None:
+        raise HTTPException(status_code=500, detail="Database not available")
+    if payload.plan not in {"free", "plus", "pro"}:
+        raise HTTPException(status_code=400, detail="Invalid plan")
+    try:
+        res = db["user"].update_one({"_id": ObjectId(payload.user_id)}, {"$set": {"plan": payload.plan}})
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+        doc = db["user"].find_one({"_id": ObjectId(payload.user_id)})
+        return to_str_id(doc)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid user id")
 
 
 @app.get("/test")
